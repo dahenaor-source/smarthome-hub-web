@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smart Home Hub</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #1a1a2e; color: white; margin: 0; padding: 20px; text-align: center; }
+        h1 { color: #e94560; margin-bottom: 5px; }
+        #status { color: #aaa; margin-bottom: 20px; font-weight: bold; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        button { padding: 15px; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; color: white; cursor: pointer; transition: transform 0.1s; }
+        button:active { transform: scale(0.95); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-connect { background: #0f3460; width: 100%; margin-bottom: 20px; font-size: 18px; padding: 18px; }
+        .btn-voice { background: #e94560; width: 100%; margin-bottom: 20px; font-size: 18px; padding: 18px; }
+        .b-night { background: #16213e; color: #a8dadc; }
+        .b-day { background: #f5a623; color: #1a1a1a; }
+        .b-relax { background: #1b4332; color: #95d5b2; }
+        .b-alarm { background: #e94560; }
+        .b-standby { background: #333; }
+        .b-temp { background: #0f3460; color: #90e0ef; }
+        .b-up { background: #533483; }
+        .b-down { background: #3d2b1f; color: #f4a261; }
+        #log { background: #000; padding: 10px; border-radius: 8px; text-align: left; font-family: monospace; font-size: 12px; height: 100px; overflow-y: auto; margin-top: 20px; color: #0f0; }
+    </style>
+</head>
+<body>
+
+    <h1>🏠 Smart Home Hub</h1>
+    <div id="status">⚫ Desconectado</div>
+    <div id="temp">🌡 Temp: --.- °C</div>
+
+    <button class="btn-connect" id="btnConnect">🔵 Conectar Bluetooth</button>
+
+    <div class="grid">
+        <button class="b-night" onclick="sendCmd('N')">🌙 Nocturno</button>
+        <button class="b-day" onclick="sendCmd('D')">☀️ Día</button>
+        <button class="b-relax" onclick="sendCmd('R')">😌 Relax</button>
+        <button class="b-alarm" onclick="sendCmd('A')">🚨 Alarma</button>
+        <button class="b-standby" onclick="sendCmd('S')">⏹ Standby</button>
+        <button class="b-temp" onclick="sendCmd('T')">🌡 Temperatura</button>
+        <button class="b-up" onclick="sendCmd('+')">🔆 Subir</button>
+        <button class="b-down" onclick="sendCmd('-')">🔅 Bajar</button>
+    </div>
+
+    <button class="btn-voice" id="btnVoice">🎤 Comando de Voz</button>
+
+    <div id="log">> Esperando conexión...</div>
+
+    <script>
+        const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+        const NUS_RX = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+
+        let bleServer, rxCharacteristic, txCharacteristic;
+        const logEl = document.getElementById('log');
+        const statusEl = document.getElementById('status');
+        const tempEl = document.getElementById('temp');
+
+        function log(msg) {
+            logEl.innerHTML += `<br>> ${msg}`;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        document.getElementById('btnConnect').addEventListener('click', async () => {
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ services: [NUS_SERVICE] }]
+                });
+                
+                statusEl.textContent = '🟡 Conectando...';
+                bleServer = await device.gatt.connect();
+                const service = await bleServer.getPrimaryService(NUS_SERVICE);
+                
+                txCharacteristic = await service.getCharacteristic(NUS_TX);
+                await txCharacteristic.startNotifications();
+                txCharacteristic.addEventListener('characteristicvaluechanged', handleResponse);
+                
+                rxCharacteristic = await service.getCharacteristic(NUS_RX);
+                
+                statusEl.textContent = '🟢 Conectado';
+                statusEl.style.color = '#00ff88';
+                log('Conectado al Hub');
+            } catch (error) {
+                log('Error: ' + error);
+                statusEl.textContent = '🔴 Error';
+            }
+        });
+
+        async function sendCmd(cmd) {
+            if (!rxCharacteristic) return log('⚠ No conectado');
+            const encoder = new TextEncoder();
+            await rxCharacteristic.writeValue(encoder.encode(cmd));
+            log(`Enviado: ${cmd}`);
+        }
+
+        function handleResponse(event) {
+            const decoder = new TextDecoder();
+            const val = decoder.decode(event.target.value).trim();
+            if(!val) return;
+            
+            log(`Recibido: ${val}`);
+            
+            if (val.startsWith('TEMP:')) {
+                tempEl.textContent = `🌡 Temp: ${val.split(':')[1]} °C`;
+            }
+        }
+
+        // Reconocimiento de Voz
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'es-ES';
+            
+            document.getElementById('btnVoice').addEventListener('click', () => {
+                recognition.start();
+                log('🎤 Escuchando...');
+            });
+
+            recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript.toLowerCase();
+                log(`Oí: "${text}"`);
+
+                if (text.includes('nocturno')) sendCmd('N');
+                else if (text.includes('día') || text.includes('dia')) sendCmd('D');
+                else if (text.includes('relax')) sendCmd('R');
+                else if (text.includes('alarma')) sendCmd('A');
+                else if (text.includes('standby') || text.includes('apagar')) sendCmd('S');
+                else if (text.includes('temperatura')) sendCmd('T');
+                else if (text.includes('subir')) sendCmd('+');
+                else if (text.includes('bajar')) sendCmd('-');
+            };
+        } else {
+            document.getElementById('btnVoice').disabled = true;
+            document.getElementById('btnVoice').textContent = '🎤 Voz no soportada';
+        }
+    </script>
+</body>
+</html>
