@@ -5,15 +5,59 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Smart Home Hub</title>
     <style>
-        body { font-family: system-ui, sans-serif; background: #1a1a2e; color: white; margin: 0; padding: 20px; text-align: center; }
-        h1 { color: #e94560; margin-bottom: 5px; }
-        #status { color: #aaa; margin-bottom: 20px; font-weight: bold; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-        button { padding: 15px; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; color: white; cursor: pointer; transition: transform 0.1s; }
+        body {
+            font-family: system-ui, sans-serif;
+            background: #1a1a2e;
+            color: white;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        h1 {
+            color: #e94560;
+            margin-bottom: 5px;
+        }
+        #status {
+            color: #aaa;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        #temp {
+            margin-bottom: 20px;
+            font-size: 18px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 15px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
         button:active { transform: scale(0.95); }
         button:disabled { opacity: 0.5; cursor: not-allowed; }
-        .btn-connect { background: #0f3460; width: 100%; margin-bottom: 20px; font-size: 18px; padding: 18px; }
-        .btn-voice   { background: #e94560; width: 100%; margin-bottom: 20px; font-size: 18px; padding: 18px; }
+        .btn-connect {
+            background: #0f3460;
+            width: 100%;
+            margin-bottom: 20px;
+            font-size: 18px;
+            padding: 18px;
+        }
+        .btn-voice {
+            background: #e94560;
+            width: 100%;
+            margin-bottom: 20px;
+            font-size: 18px;
+            padding: 18px;
+        }
         .b-night   { background: #16213e; color: #a8dadc; }
         .b-day     { background: #f5a623; color: #1a1a1a; }
         .b-relax   { background: #1b4332; color: #95d5b2; }
@@ -21,7 +65,18 @@
         .b-standby { background: #333; }
         .b-temp    { background: #0f3460; color: #90e0ef; }
         .b-party   { background: #c71585; color: #fff; }
-        #log { background: #000; padding: 10px; border-radius: 8px; text-align: left; font-family: monospace; font-size: 12px; height: 100px; overflow-y: auto; margin-top: 20px; color: #0f0; }
+        #log {
+            background: #000;
+            padding: 10px;
+            border-radius: 8px;
+            text-align: left;
+            font-family: monospace;
+            font-size: 12px;
+            height: 150px;
+            overflow-y: auto;
+            margin-top: 20px;
+            color: #0f0;
+        }
     </style>
 </head>
 <body>
@@ -47,6 +102,9 @@
     <div id="log">&gt; Waiting for connection...</div>
 
     <script>
+        // ============================================================
+        // BLE UUIDs (must match ESP32-C6 firmware)
+        // ============================================================
         const NUS_SERVICE = '12345678-1234-1234-1234-123456789abc';
         const NUS_TX      = '12345678-1234-1234-1234-123456789abe';
         const NUS_RX      = '12345678-1234-1234-1234-123456789abd';
@@ -61,6 +119,9 @@
             logEl.scrollTop = logEl.scrollHeight;
         }
 
+        // ============================================================
+        // BLE CONNECTION
+        // ============================================================
         document.getElementById('btnConnect').addEventListener('click', async () => {
             try {
                 const device = await navigator.bluetooth.requestDevice({
@@ -87,6 +148,9 @@
             }
         });
 
+        // ============================================================
+        // SEND COMMAND
+        // ============================================================
         async function sendCmd(cmd) {
             if (!rxCharacteristic) return log('⚠️ Not connected');
             const encoder = new TextEncoder();
@@ -94,6 +158,9 @@
             log(`Sent: ${cmd}`);
         }
 
+        // ============================================================
+        // HANDLE RESPONSE FROM STM32
+        // ============================================================
         function handleResponse(event) {
             const decoder = new TextDecoder();
             const val = decoder.decode(event.target.value).trim();
@@ -116,90 +183,131 @@
             recognition.maxAlternatives = 5;
             recognition.continuous = false;
             recognition.interimResults = false;
-        
+
             document.getElementById('btnVoice').addEventListener('click', () => {
                 recognition.start();
                 log('🎤 Listening... say "[command] Mode"');
             });
-        
+
             recognition.onresult = (event) => {
-            const alternatives = event.results[0];
-            
-            // MODO DIAGNÓSTICO - Muestra TODAS las opciones
-            log('═══════════════════════════════════');
-            log(`Total alternatives: ${alternatives.length}`);
-            for (let i = 0; i < alternatives.length; i++) {
-                const text = alternatives[i].transcript.toLowerCase().trim();
-                const confidence = (alternatives[i].confidence * 100).toFixed(1);
-                log(`${i+1}. "${text}" (${confidence}%)`);
-            }
-            log('═══════════════════════════════════');
-            
-            // Ahora intenta detectar
-            let detectedCmd = null;
-            let recognizedText = '';
-        
-            for (let i = 0; i < alternatives.length; i++) {
-                const text = alternatives[i].transcript.toLowerCase().trim();
-        
-                if (!text.includes('mode')) continue;
-        
-                if (text.includes('night mode')) {
-                    detectedCmd = 'N';
-                    recognizedText = 'Night Mode';
-                    break;
+                const alternatives = event.results[0];
+
+                // ============================================
+                // DIAGNOSTIC MODE - Show all alternatives
+                // ============================================
+                log('═══════════════════════════════════');
+                log(`Total alternatives: ${alternatives.length}`);
+                for (let i = 0; i < alternatives.length; i++) {
+                    const text = alternatives[i].transcript.toLowerCase().trim();
+                    const confidence = alternatives[i].confidence
+                        ? (alternatives[i].confidence * 100).toFixed(1)
+                        : 'N/A';
+                    log(`${i+1}. "${text}" (${confidence}%)`);
                 }
-                else if (text.includes('day mode')   ||
-                         text.includes('they mode')  ||
-                         text.includes('hey mode')   ||
-                         text.includes('bay mode')   ||
-                         text.includes('dei mode')   ||
-                         text.includes('dey mode')   ||
-                         text.includes('gray mode')  ||
-                         text.includes('grey mode')  ||
-                         text.includes('pay mode')   ||
-                         text.includes('say mode')   ||
-                         text.includes('way mode')   ||
-                         text.includes('ray mode')) {
-                    detectedCmd = 'D';
-                    recognizedText = 'Day Mode';
-                    break;
+                log('═══════════════════════════════════');
+
+                // ============================================
+                // COMMAND DETECTION
+                // ============================================
+                let detectedCmd = null;
+                let recognizedText = '';
+
+                for (let i = 0; i < alternatives.length; i++) {
+                    const text = alternatives[i].transcript.toLowerCase().trim();
+
+                    // Solo procesar si contiene "mode" o variantes
+                    const hasModeKeyword = text.includes('mode') ||
+                                           text.includes('mowed') ||
+                                           text.includes('mod');
+                    if (!hasModeKeyword) continue;
+
+                    // NIGHT MODE
+                    if (text.includes('night')) {
+                        detectedCmd = 'N';
+                        recognizedText = 'Night Mode';
+                        break;
+                    }
+                    // DAY MODE - todas las variantes de pronunciación
+                    else if (text.includes('day')   ||
+                             text.includes('they')  ||
+                             text.includes('hey')   ||
+                             text.includes('bay')   ||
+                             text.includes('dei')   ||
+                             text.includes('dey')   ||
+                             text.includes('gray')  ||
+                             text.includes('grey')  ||
+                             text.includes('pay')   ||
+                             text.includes('say')   ||
+                             text.includes('way')   ||
+                             text.includes('ray')   ||
+                             text.includes('may')   ||
+                             text.includes('jay')   ||
+                             text.includes('lay')   ||
+                             text.includes('nay')   ||
+                             text.includes('bright')||
+                             text.includes('sunny') ||
+                             text.includes('light')) {
+                        detectedCmd = 'D';
+                        recognizedText = 'Day Mode';
+                        break;
+                    }
+                    // RELAX MODE
+                    else if (text.includes('relax')   ||
+                             text.includes('relaxed') ||
+                             text.includes('relaxing')) {
+                        detectedCmd = 'R';
+                        recognizedText = 'Relax Mode';
+                        break;
+                    }
+                    // ALARM MODE
+                    else if (text.includes('alarm')   ||
+                             text.includes('alarms')  ||
+                             text.includes('alert')   ||
+                             text.includes('emergency')) {
+                        detectedCmd = 'A';
+                        recognizedText = 'Alarm Mode';
+                        break;
+                    }
+                    // STANDBY MODE
+                    else if (text.includes('standby')  ||
+                             text.includes('stand by') ||
+                             text.includes('stand-by') ||
+                             text.includes('off')) {
+                        detectedCmd = 'S';
+                        recognizedText = 'Standby Mode';
+                        break;
+                    }
+                    // TEMPERATURE MODE
+                    else if (text.includes('temperature') ||
+                             text.includes('temp')        ||
+                             text.includes('thermometer')) {
+                        detectedCmd = 'T';
+                        recognizedText = 'Temperature Mode';
+                        break;
+                    }
+                    // PARTY MODE
+                    else if (text.includes('party')   ||
+                             text.includes('parties') ||
+                             text.includes('disco')) {
+                        detectedCmd = 'P';
+                        recognizedText = 'Party Mode';
+                        break;
+                    }
                 }
-                else if (text.includes('relax mode')) {
-                    detectedCmd = 'R';
-                    recognizedText = 'Relax Mode';
-                    break;
+
+                // Ejecutar comando detectado
+                if (detectedCmd) {
+                    log(`✅ MATCH: ${recognizedText} → '${detectedCmd}'`);
+                    sendCmd(detectedCmd);
+                } else {
+                    log('❌ No match found. Try: "Night Mode", "Day Mode", "Party Mode", etc.');
                 }
-                else if (text.includes('alarm mode') || text.includes('alert mode')) {
-                    detectedCmd = 'A';
-                    recognizedText = 'Alarm Mode';
-                    break;
-                }
-                else if (text.includes('standby mode') || text.includes('stand by mode')) {
-                    detectedCmd = 'S';
-                    recognizedText = 'Standby Mode';
-                    break;
-                }
-                else if (text.includes('temperature mode') || text.includes('temp mode')) {
-                    detectedCmd = 'T';
-                    recognizedText = 'Temperature Mode';
-                    break;
-                }
-                else if (text.includes('party mode')) {
-                    detectedCmd = 'P';
-                    recognizedText = 'Party Mode';
-                    break;
-                }
-            }
-        
-            if (detectedCmd) {
-                log(`✅ MATCH: ${recognizedText} → '${detectedCmd}'`);
-                sendCmd(detectedCmd);
-            } else {
-                log('❌ No match found');
-            }
-        };
-        
+            };
+
+            recognition.onerror = (event) => {
+                log(`❌ Voice error: ${event.error}`);
+            };
+
         } else {
             document.getElementById('btnVoice').disabled = true;
             document.getElementById('btnVoice').textContent = '🎤 Voice not supported';
