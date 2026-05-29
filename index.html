@@ -106,29 +106,114 @@
             }
         }
 
-        // Voice Recognition
+        // ============================================================
+        // VOICE RECOGNITION - All commands end with "Mode"
+        // ============================================================
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
             recognition.lang = 'en-US';
-
+            recognition.maxAlternatives = 5;
+            recognition.continuous = false;
+            recognition.interimResults = false;
+        
             document.getElementById('btnVoice').addEventListener('click', () => {
                 recognition.start();
-                log('🎤 Listening...');
+                log('🎤 Listening... say "[command] Mode"');
             });
-
+        
             recognition.onresult = (event) => {
-                const text = event.results[0][0].transcript.toLowerCase();
-                log(`Heard: "${text}"`);
-
-                if (text.includes('night'))         sendCmd('N');
-                else if (text.includes('day'))      sendCmd('D');
-                else if (text.includes('relax'))    sendCmd('R');
-                else if (text.includes('alarm'))    sendCmd('A');
-                else if (text.includes('standby') || text.includes('off')) sendCmd('S');
-                else if (text.includes('temp'))     sendCmd('T');
-                else if (text.includes('party'))    sendCmd('P');
+                const alternatives = event.results[0];
+                let detectedCmd = null;
+                let recognizedText = '';
+        
+                // Recorrer todas las alternativas que devuelve el reconocedor
+                for (let i = 0; i < alternatives.length; i++) {
+                    const text = alternatives[i].transcript.toLowerCase().trim();
+                    log(`Option ${i+1}: "${text}"`);
+        
+                    // Solo procesar si contiene la palabra "mode"
+                    if (!text.includes('mode')) continue;
+        
+                    // NIGHT MODE
+                    if (text.includes('night mode')) {
+                        detectedCmd = 'N';
+                        recognizedText = 'Night Mode';
+                        break;
+                    }
+                    // DAY MODE - con todas las variantes mal pronunciadas
+                    else if (text.includes('day mode')   ||
+                             text.includes('they mode')  ||
+                             text.includes('hey mode')   ||
+                             text.includes('bay mode')   ||
+                             text.includes('dei mode')   ||
+                             text.includes('dey mode')   ||
+                             text.includes('gray mode')  ||
+                             text.includes('grey mode')  ||
+                             text.includes('pay mode')   ||
+                             text.includes('say mode')   ||
+                             text.includes('way mode')   ||
+                             text.includes('ray mode')) {
+                        detectedCmd = 'D';
+                        recognizedText = 'Day Mode';
+                        break;
+                    }
+                    // RELAX MODE
+                    else if (text.includes('relax mode')   ||
+                             text.includes('relaxed mode') ||
+                             text.includes('relaxing mode')) {
+                        detectedCmd = 'R';
+                        recognizedText = 'Relax Mode';
+                        break;
+                    }
+                    // ALARM MODE
+                    else if (text.includes('alarm mode')   ||
+                             text.includes('alarms mode')  ||
+                             text.includes('alert mode')) {
+                        detectedCmd = 'A';
+                        recognizedText = 'Alarm Mode';
+                        break;
+                    }
+                    // STANDBY MODE
+                    else if (text.includes('standby mode') ||
+                             text.includes('stand by mode')||
+                             text.includes('stand-by mode')||
+                             text.includes('off mode')) {
+                        detectedCmd = 'S';
+                        recognizedText = 'Standby Mode';
+                        break;
+                    }
+                    // TEMPERATURE MODE
+                    else if (text.includes('temperature mode') ||
+                             text.includes('temp mode')        ||
+                             text.includes('thermometer mode')) {
+                        detectedCmd = 'T';
+                        recognizedText = 'Temperature Mode';
+                        break;
+                    }
+                    // PARTY MODE
+                    else if (text.includes('party mode') ||
+                             text.includes('parties mode')||
+                             text.includes('party time')) {
+                        detectedCmd = 'P';
+                        recognizedText = 'Party Mode';
+                        break;
+                    }
+                }
+        
+                // Ejecutar comando detectado o avisar error
+                if (detectedCmd) {
+                    log(`✅ Recognized: ${recognizedText}`);
+                    sendCmd(detectedCmd);
+                } else {
+                    log('⚠️ Command not recognized. Try: "Night Mode", "Day Mode", "Party Mode", etc.');
+                }
             };
+        
+            recognition.onerror = (event) => {
+                log(`❌ Voice error: ${event.error}`);
+            };
+        
         } else {
             document.getElementById('btnVoice').disabled = true;
             document.getElementById('btnVoice').textContent = '🎤 Voice not supported';
